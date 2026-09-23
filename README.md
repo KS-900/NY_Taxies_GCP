@@ -73,6 +73,44 @@ docker compose down
 
 Use docker compose down -v only when you also want to remove the named database and Kestra volumes.
 
+## BigQuery Workflow
+
+This is the BigQuery workflow used for the Yellow Taxi data in the project. It creates an external table backed by files in Google Cloud Storage, previews the data, and then creates non-partitioned and partitioned tables for analysis.
+
+```sql
+-- Create an external table referencing files in GCS
+CREATE OR REPLACE EXTERNAL TABLE `ny-rides-alexey-507306.ny_taxi_data.external_yellow_tripdata`
+OPTIONS (
+  format = 'CSV',
+  uris = [
+    'gs://ny-rides-alexey-507306-bucket/Trips/yellow_tripdata_2019-01.csv'
+  ]
+);
+
+-- Preview yellow trip data from the external table
+SELECT *
+FROM `ny-rides-alexey-507306.ny_taxi_data.external_yellow_tripdata`
+LIMIT 10;
+
+-- Create a non-partitioned table from the external table
+CREATE OR REPLACE TABLE `ny-rides-alexey-507306.ny_taxi_data.yellow_tripdata_non_partitioned AS
+SELECT *
+FROM `ny-rides-alexey-507306.ny_taxi_data.external_yellow_tripdata`;
+
+-- Create a partitioned table from the external table
+CREATE OR REPLACE TABLE `ny-rides-alexey-507306.ny_taxi_data.yellow_tripdata_partitioned`
+PARTITION BY DATE(tpep_pickup_datetime) AS
+SELECT *
+FROM `ny-rides-alexey-507306.ny_taxi_data.external_yellow_tripdata`;
+
+-- Inspect data in the partitioned table
+SELECT DISTINCT(VendorID)
+FROM `ny-rides-alexey-507306.ny_taxi_data.yellow_tripdata_non_partitioned`
+WHERE DATE(tpep_pickup_datetime) BETWEEN '2019-01-01' AND '2019-01-31';
+```
+
+This approach lets you query raw data stored in GCS without importing everything up front, then materialize the cleaned data into BigQuery tables for better performance and cost control.
+
 ## Ingest Local Data
 
 The ingestion script reads paths from environment variables and requires these values:
@@ -127,3 +165,4 @@ taxi_zone_lookup.csv    Taxi zone lookup data
 keys/                   Local service-account credentials
 
 Keep `keys/` and `.env` files private, and rotate any credentials that may have been exposed.
+
